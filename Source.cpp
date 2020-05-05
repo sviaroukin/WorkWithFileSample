@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <fstream>
+#include <windows.h>
 
 using namespace std;
 
@@ -16,16 +17,16 @@ struct Account {
 };
 
 struct AccountManager {
-	typedef void (*MenuFunc)(AccountManager* manager);
-	string filePath;
-	Account* accounts;
-	Account* currentUserAccount = NULL;
-	int count = 0;
-	int size = 10;
 
-	MenuFunc mainMenuFunc;
-	MenuFunc userMenuFunc;
-	MenuFunc adminMenuFunc;
+private:
+	typedef void (*MenuFunc)(AccountManager* manager);
+	//single instance of AccountManager
+	bool isDisposed = false;
+	static AccountManager* instance;
+
+	//delete copy and move constructors to prevent creating instances by copying and moving the instance returned by GetInstance() method
+	AccountManager(const AccountManager & source) = delete;
+	AccountManager(AccountManager && source) = delete;
 
 	AccountManager(string filePath, MenuFunc mainMenuFunc, MenuFunc userMenuFunc, MenuFunc adminMenuFunc) {
 		this->filePath = filePath;
@@ -36,6 +37,24 @@ struct AccountManager {
 		accounts = new Account[size];
 		InitAccountManager();
 	}
+
+public:
+	string filePath;
+	Account* accounts;
+	Account* currentUserAccount = NULL;
+	int count = 0;
+	int size = 10;
+	static void InitAccountManager(string filePath, MenuFunc mainMenuFunc, MenuFunc userMenuFunc, MenuFunc adminMenuFunc) {
+		instance = new AccountManager(filePath, mainMenuFunc, userMenuFunc, adminMenuFunc);
+	}
+
+	static AccountManager* GetInstance() {
+		return instance;
+	}
+
+	MenuFunc mainMenuFunc;
+	MenuFunc userMenuFunc;
+	MenuFunc adminMenuFunc;
 
 	void InitAccountManager() {
 		ifstream fin(filePath, ios::in);
@@ -183,18 +202,22 @@ struct AccountManager {
 	}
 
 	~AccountManager() {
-		ofstream fout(filePath);
-		if (fout.is_open() && count > 0)
-		{
-			const char space = '\t';
-			int i;
-			for (i = 0; i < count - 1; i++) {
-				fout << accounts[i].Login << space << accounts[i].Password << space << accounts[i].Role << endl;
+		//prevent multiple call of destructor for already destructed(disposed) object
+		if (!isDisposed) {
+			ofstream fout(filePath);
+			if (fout.is_open() && count > 0)
+			{
+				const char space = '\t';
+				int i;
+				for (i = 0; i < count - 1; i++) {
+					fout << accounts[i].Login << space << accounts[i].Password << space << accounts[i].Role << endl;
+				}
+				fout << accounts[i].Login << space << accounts[i].Password << space << accounts[i].Role;
+				fout.close();
 			}
-			fout << accounts[i].Login << space << accounts[i].Password << space << accounts[i].Role;
-			fout.close();
+			delete[] accounts;
+			isDisposed = true;
 		}
-		delete[] accounts;
 	}
 };
 
@@ -294,10 +317,34 @@ void mainMenu(AccountManager* manager) {
 	}
 }
 
+//struct that guarantee that returned by static function GetAccountManager object is single in system
+BOOL WINAPI ConsoleWindowEventsHandler(DWORD dwCtrlType) {
+
+	//if console was closed
+	if (CTRL_CLOSE_EVENT == dwCtrlType) {
+		//delete single AccountManager instance
+		AccountManager* manager = AccountManager::GetInstance();
+		if (manager != NULL) {
+			delete manager;
+		}
+
+		return TRUE;
+	}
+
+	return FALSE;
+}
+
+//definition for static struct variable
+AccountManager* AccountManager::instance;
+
 int main() {
+	SetConsoleCtrlHandler(ConsoleWindowEventsHandler, true);
+
 	string filePath = "Users.txt";
-	AccountManager manager(filePath, mainMenu, userMenu, adminMenu);
-	mainMenu(&manager);
+	AccountManager::InitAccountManager(filePath, mainMenu, userMenu, adminMenu);
+	AccountManager* manager = AccountManager::GetInstance();
+	manager->Menu();
+	delete manager;
 
 	return 0;
 }
