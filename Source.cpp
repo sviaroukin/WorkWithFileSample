@@ -296,9 +296,8 @@ void mainMenu(AccountManager* manager) {
 
 int main() {
 	string filePath = "Users.txt";
-	AccountManager* manager = new AccountManager(filePath, mainMenu, userMenu, adminMenu);
-	mainMenu(manager);
+	AccountManager manager(filePath, mainMenu, userMenu, adminMenu);
+	mainMenu(&manager);
 
-	manager->~AccountManager();
 	return 0;
 }
